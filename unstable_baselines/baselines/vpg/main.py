@@ -12,7 +12,7 @@ from unstable_baselines.baselines.vpg.trainer import VPGTrainer
 from unstable_baselines.common.util import set_device_and_logger
 from unstable_baselines.common.util import load_config
 from unstable_baselines.common.util import set_global_seed
-from unstable_baselines.common.rollout import RolloutBuffer
+from unstable_baselines.common.buffer import OnlineBuffer
 from unstable_baselines.common.env_wrapper import BaseEnvWrapper, get_env
 
 # debug
@@ -23,8 +23,8 @@ from unstable_baselines.common import util
     ignore_unknown_options=True,
     allow_extra_args=True,
 ))
-@click.argument("config-path", type=str, default="unstable_baselines/baselines/vpg/configs/default.json")
-@click.option("--log-dir", type=str, default="logs/vpg")
+@click.argument("config-path",type=str, required=True)
+@click.option("--log-dir", default=os.path.join("logs", "vpg"))
 @click.option("--gpu", type=int, default=0)
 @click.option("--print-log", type=bool, default=True)
 @click.option("--seed", type=int, default=35)
@@ -47,8 +47,7 @@ def main(config_path: str,
 
     # initialize logger
     env_name = args['env_name']
-    logger = Logger(log_dir, prefix=env_name+"-"+info, print_to_terminal=print_log)
-    logger.log_str(f"logging to {logger.log_path}")
+    logger = Logger(log_dir, env_name, prefix = info, print_to_terminal=print_log)
 
     # set device and logger
     set_device_and_logger(gpu, logger)
@@ -58,15 +57,13 @@ def main(config_path: str,
 
     # initialize environment
     logger.log_str("Initializing Environment")
-    env = get_env(env_name)
-    env = BaseEnvWrapper(env, **args['env'])
+    train_env = get_env(env_name)
     eval_env = get_env(env_name)
-    eval_env = BaseEnvWrapper(env, **args['env'])
-    state_space = env.observation_space
-    action_space = env.action_space
+    state_space = train_env.observation_space
+    action_space = train_env.action_space
 
     # initialize buffer
-    buffer = RolloutBuffer(state_space, action_space, **args['buffer'])
+    buffer = OnlineBuffer(state_space, action_space, **args['buffer'])
 
     # initialize agent
     logger.log_str("Initializing Agent")
@@ -76,10 +73,9 @@ def main(config_path: str,
     logger.log_str("Initializing Trainer")
     trainer = VPGTrainer(
         agent,
-        env,
+        train_env,
         eval_env,
-        buffer, 
-        logger,
+        buffer,
         **args['trainer']
     )
 

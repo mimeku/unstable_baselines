@@ -10,6 +10,7 @@ import gym
 from gym.spaces import Discrete, Box, MultiBinary, space
 
 from unstable_baselines.common import util
+import torch.nn.functional as F
 
 
 def get_optimizer(optimizer_class: str, network: nn.Module, learning_rate: float, **kwargs):
@@ -60,7 +61,14 @@ def get_network(param_shape, deconv = False):
     else:
         raise ValueError(f"Network shape {param_shape} illegal.")
 
+class Swish(nn.Module):
+    def __init__(self):
+        super(Swish, self).__init__()
 
+    def forward(self, x):
+        x = x * torch.sigmoid(x)
+        return x
+        
 def get_act_cls(act_fn_name):
     act_fn_name = act_fn_name.lower()
     if act_fn_name == "tanh":
@@ -71,6 +79,8 @@ def get_act_cls(act_fn_name):
         act_cls = torch.nn.ReLU
     elif act_fn_name == 'identity':
         act_cls = torch.nn.Identity
+    elif act_fn_name == 'swish':
+        act_cls = Swish
     else:
         raise NotImplementedError(f"Activation functtion {act_fn_name} is not implemented. \
             Possible choice: ['tanh', 'sigmoid', 'relu', 'identity'].")
@@ -88,7 +98,9 @@ class MLPNetwork(nn.Module):
             **kwargs
         ):
         super(MLPNetwork, self).__init__()
-        warnings.warn(f"Redundant parameters for MLP network {kwargs}.")
+        if len(kwargs.keys()) > 0:
+            warn_str = "Redundant parameters for MLP network {}.".format(kwargs)
+            warnings.warn(warn_str)
 
         if type(hidden_dims) == int:
             hidden_dims = [hidden_dims]
@@ -107,7 +119,11 @@ class MLPNetwork(nn.Module):
     
     def forward(self, input):
         return self.networks(input)
-
+    
+    @property 
+    def weights(self):
+        return [net.weight for net in self.networks if isinstance(net, torch.nn.modules.linear.Linear)]
+            
 
 class BasePolicyNetwork(ABC, nn.Module):
     def __init__(self, 
@@ -292,10 +308,12 @@ class GaussianPolicyNetwork(BasePolicyNetwork):
                  out_act_fn: str = "identity", 
                  re_parameterize: bool = True,
                  fix_std: bool = False,
+                 paramterized_std: bool = False,
                  log_std: float = None,
                  log_std_min: int = -20, 
                  log_std_max: int = 2, 
-                 *args, **kwargs
+                 stablize_log_prob: bool=True,
+                **kwargs
         ):
         super(GaussianPolicyNetwork, self).__init__(input_dim, action_space, hidden_dims, act_fn)
 
@@ -325,24 +343,28 @@ class GaussianPolicyNetwork(BasePolicyNetwork):
             self.log_std = -0.5 * np.ones(self.action_dim, dtype=np.float32)
         else:
             self.log_std = log_std
-        self.log_std = torch.tensor(self.log_std, dtype=torch.float, device=util.device)
+        if paramterized_std:
+            self.log_std = torch.nn.Parameter(torch.as_tensor(self.log_std)).to(util.device)
+        else:
+            self.log_std = torch.tensor(self.log_std, dtype=torch.float, device=util.device)
         self.log_std_min = nn.Parameter(torch.tensor(log_std_min, dtype=torch.float, device=util.device ), requires_grad=False)
         self.log_std_max = nn.Parameter(torch.tensor(log_std_max, dtype=torch.float, device=util.device ), requires_grad=False)
+        self.stablize_log_prob = stablize_log_prob
 
-    def forward(self, state: torch.Tensor):
-        out = self.networks(state)
+    def forward(self, obs: torch.Tensor):
+        out = self.networks(obs)
         action_mean = out[:, :self.action_dim]
         # check whether the `log_std` is fixed in forward() to make the sample function
         # keep consistent
-        if not self.fix_std:
-            action_log_std = out[:, self.action_dim:]
-        else:
+        if self.fix_std:
             action_log_std = self.log_std
+        else:
+            action_log_std = out[:, self.action_dim:]       
         return action_mean, action_log_std
 
-    def sample(self, state: torch.Tensor, deterministic: bool=False):
+    def sample(self, obs: torch.Tensor, deterministic: bool=False):
 
-        mean, log_std = self.forward(state)
+        mean, log_std = self.forward(obs)
         # util.debug_print(type(log_std), info="Gaussian Policy sample")
         log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
 
@@ -361,7 +383,10 @@ class GaussianPolicyNetwork(BasePolicyNetwork):
             
         log_prob_prev_tanh = dist.log_prob(action_prev_tanh)
         # log_prob = log_prob_prev_tanh - torch.log(self.action_scale*(1-torch.tanh(action_prev_tanh).pow(2)) + 1e-6)
-        log_prob = log_prob_prev_tanh - (2 * (np.log(2) - action_prev_tanh - torch.nn.functional.softplus(-2*action_prev_tanh)) )
+        if self.stablize_log_prob:
+            log_prob = log_prob_prev_tanh - (2 * (np.log(2) - action_prev_tanh - torch.nn.functional.softplus(-2*action_prev_tanh)) )
+        else:
+            log_prob = log_prob_prev_tanh
         log_prob = torch.sum(log_prob, dim=-1, keepdim=True)
         return {
             "action_prev_tanh": action_prev_tanh, 
@@ -376,8 +401,8 @@ class GaussianPolicyNetwork(BasePolicyNetwork):
         
         Note: This function should not be used by SAC because SAC only replay states in buffer.
         """
-        mean, log_var = self.forward(states)
-        dist = Normal(mean, log_var.exp())
+        mean, log_std = self.forward(states)
+        dist = Normal(mean, log_std.exp())
 
         if action_type == "scaled":
             actions = (actions - self.action_bias) / self.action_scale
@@ -385,9 +410,12 @@ class GaussianPolicyNetwork(BasePolicyNetwork):
         elif action_type == "raw":
             # actions = torch.atanh(actions)
             pass
-        log_pi = dist.log_prob(actions).sum(dim=-1, keepdim=True)
+        log_prob = dist.log_prob(actions).sum(dim=-1, keepdim=True)
         entropy = dist.entropy().sum(dim=-1, keepdim=True)
-        return log_pi, entropy
+        return {
+            "log_prob": log_prob,
+            "entropy": entropy
+            }
 
     def to(self, device):
         self.action_scale = self.action_scale.to(device)
