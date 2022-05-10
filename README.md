@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/rlworkgroup/metaworld/blob/master/LICENSE)
 
-This is a LXH-unfriendly, but YGY-friendly and GCX-CrazyHappy project. Unstable Baselines is designed to provide a quick-start guide for Reinforcement Learning beginners and a codebase for agile algorithm development. The algorithms strictly follows the original implementations, and the performance of Unstable Baselines matches that in the original implementations. UB is currently maintained by researchers from [lamda-rl](https://github.com/LAMDA-RL).
+Unstable Baselines is designed to provide a quick-start guide for Reinforcement Learning beginners and a codebase for agile algorithm development. The algorithms strictly follows the original implementations, and the performance of Unstable Baselines matches that in the original implementations. UB is currently maintained by researchers from [lamda-rl](https://github.com/LAMDA-RL).
 
 ---
 ## Stable Algorithms (Runnable and has equivalent performance to that of the original implementations):
@@ -27,6 +27,11 @@ This is a LXH-unfriendly, but YGY-friendly and GCX-CrazyHappy project. Unstable 
 * [The Option-Critic Architecture](https://www.aaai.org/Conferences/AAAI/2017/PreliminaryPapers/12-Bacon-14858.pdf) (OC)
 
 ---
+
+## Current Performance
+
+![Alt text](/docs/images/Eval%20Return.png "Evaluation Return")
+
 ## Quick Start
 
 ### Install
