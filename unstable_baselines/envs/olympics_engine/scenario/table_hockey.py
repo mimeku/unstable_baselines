@@ -1,31 +1,31 @@
 # from olympics_engine.core import OlympicsBase
-# # from olympics_engine.viewer import Viewer, debug
+# from olympics_engine.viewer import Viewer, debug
 from unstable_baselines.envs.olympics_engine.core import OlympicsBase
 from unstable_baselines.envs.olympics_engine.viewer import Viewer, debug
 
 import pygame
 import sys
 import random
-import os
 from pathlib import Path
 CURRENT_PATH = str(Path(__file__).resolve().parent.parent)
+import os
 import math
 
+from PIL import Image
+import numpy as np
+import cv2
 
-def point2point(p1, p2):
-    return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
-class wrestling(OlympicsBase):
+class table_hockey(OlympicsBase):
     def __init__(self, map):
         self.minimap_mode = map['obs_cfg']['minimap']
 
-        super(wrestling, self).__init__(map)
+        super(table_hockey, self).__init__(map)
 
-        self.game_name = 'wrestling'
+        self.game_name = 'table-hockey'
+
         self.agent1_color = self.agent_list[0].color
         self.agent2_color = self.agent_list[1].color
-        self.bound_color = 'green'
-
 
         self.gamma = map['env_cfg']['gamma']
         self.wall_restitution = map['env_cfg']['wall_restitution']
@@ -33,15 +33,12 @@ class wrestling(OlympicsBase):
         self.tau = map['env_cfg']['tau']
         self.speed_cap = map['env_cfg']['speed_cap']
         self.max_step = map['env_cfg']['max_step']
+
         self.print_log = False
 
         self.draw_obs = True
         self.show_traj = False
         self.beauty_render = False
-
-
-    def check_overlap(self):
-        pass
 
 
     def reset(self):
@@ -53,6 +50,7 @@ class wrestling(OlympicsBase):
         self.viewer = Viewer(self.view_setting)
         self.display_mode=False
 
+        self.ball_pos_init()
 
         init_obs = self.get_obs()
         if self.minimap_mode:
@@ -60,6 +58,18 @@ class wrestling(OlympicsBase):
 
         output_init_obs = self._build_from_raw_obs(init_obs)
         return output_init_obs
+
+    def ball_pos_init(self):
+        y_min, y_max = 300, 500
+        for index, item in enumerate(self.agent_list):
+            if item.type == 'ball':
+                random_y = random.uniform(y_min, y_max)
+                self.agent_init_pos[index][1] = random_y
+
+
+    def check_overlap(self):
+        pass
+
 
 
     def check_action(self, action_list):
@@ -74,21 +84,21 @@ class wrestling(OlympicsBase):
         return action
 
     def step(self, actions_list):
-        previous_pos = self.agent_pos
 
         actions_list = self.check_action(actions_list)
 
-        self.stepPhysics(actions_list, self.step_cnt)
-
+        self.stepPhysics(actions_list)
         self.speed_limit()
-
-        self.cross_detect(previous_pos, self.agent_pos)
-
         self.step_cnt += 1
+        self.cross_detect()
+
+
+
         step_reward = self.get_reward()
-        obs_next = self.get_obs()
-        # obs_next = 1
+        obs_next = self.get_obs()              #need to add agent or ball check in get_obs
+
         done = self.is_terminal()
+        self.done = done
         self.change_inner_state()
 
         if self.minimap_mode:
@@ -123,49 +133,54 @@ class wrestling(OlympicsBase):
 
 
 
-    def cross_detect(self, previous_pos, new_pos):
 
-        #case one: arc intersect with the agent
-        #check radian first
-        finals = []
-        for object_idx in range(len(self.map['objects'])):
-            object = self.map['objects'][object_idx]
-            if object.can_pass() and object.color == self.bound_color:
-                #arc_pos = object.init_pos
-                finals.append(object)
-
+    def cross_detect(self, **kwargs):
+        """
+        check whether the agent has reach the cross(final) line
+        :return:
+        """
         for agent_idx in range(self.agent_num):
+
             agent = self.agent_list[agent_idx]
-            agent_pre_pos, agent_new_pos = previous_pos[agent_idx], new_pos[agent_idx]
 
-            for final in finals:
-                center = (final.init_pos[0] + 0.5*final.init_pos[2], final.init_pos[1]+0.5*final.init_pos[3])
-                arc_r = final.init_pos[2]/2
+            if agent.type == 'ball':
+                for object_idx in range(len(self.map['objects'])):
+                    object = self.map['objects'][object_idx]
 
-                if final.check_radian(agent_new_pos, [0,0], 0):
-                    l = point2point(agent_new_pos, center)
-                    if abs(l - arc_r) <= agent.r:
-                        # agent.color = 'blue'
-                        agent.finished = True
-                        agent.alive = False
-
-
-
-        #case two: the agent cross the arc, inner  to outer or outer to inner
+                    if not object.can_pass():
+                        continue
+                    else:
+                        if object.color == 'red' and object.check_cross(self.agent_pos[agent_idx], agent.r):
+                            agent.color = 'red'
+                            agent.finished = True  # when agent has crossed the finished line
+                            agent.alive = False
 
 
     def get_reward(self):
 
-        agent1_finished = self.agent_list[0].finished
-        agent2_finished = self.agent_list[1].finished
-        if agent1_finished and agent2_finished:
-            return [0., 0]
-        elif agent1_finished and not agent2_finished:
-            return [0., 1]
-        elif not agent1_finished and agent2_finished:
-            return [1., 0]
+        ball_end_pos = None
+
+        for agent_idx in range(self.agent_num):
+            agent = self.agent_list[agent_idx]
+
+            if agent.type == 'ball' and agent.finished:
+                ball_end_pos = self.agent_pos[agent_idx]
+
+        if ball_end_pos is not None and ball_end_pos[0] < 400:
+            if self.agent_pos[0][0] < 400:
+                return [0.,1.]
+            else:
+                return [1., 0.]
+        elif ball_end_pos is not None and ball_end_pos[0] > 400:
+            if self.agent_pos[0][0] < 400:
+                return [1. ,0.]
+            else:
+                return [0., 1.]
+
         else:
-            return [0,0]
+            return [0. ,0.]
+
+
 
     def is_terminal(self):
 
@@ -173,20 +188,35 @@ class wrestling(OlympicsBase):
             return True
 
         for agent_idx in range(self.agent_num):
-            if self.agent_list[agent_idx].finished:
+            agent = self.agent_list[agent_idx]
+            if agent.type == 'ball' and agent.finished:
                 return True
 
         return False
 
     def check_win(self):
-        if self.agent_list[0].finished and not (self.agent_list[1].finished):
-            return '1'
-        elif not (self.agent_list[0].finished) and self.agent_list[1].finished:
-            return '0'
-        else:
-            return '-1'
+        if self.done:
+            self.ball_end_pos = None
+            for agent_idx in range(self.agent_num):
+                agent = self.agent_list[agent_idx]
+                if agent.type == 'ball' and agent.finished:
+                    self.ball_end_pos = self.agent_pos[agent_idx]
 
-    def render(self, info=None):
+        if self.ball_end_pos is None:
+            return '-1'
+        else:
+            if self.ball_end_pos[0] < 400:
+                if self.agent_pos[0][0] < 400:
+                    return '1'
+                else:
+                    return '0'
+            elif self.ball_end_pos[0] > 400:
+                if self.agent_pos[0][0] < 400:
+                    return '0'
+                else:
+                    return '1'
+
+    def render(self, info=None, mode='human', width=256, height=256):
 
         if self.minimap_mode:
             pass
@@ -195,10 +225,10 @@ class wrestling(OlympicsBase):
             if not self.display_mode:
                 self.viewer.set_mode()
                 self.display_mode = True
-
                 if self.beauty_render:
                     self._load_image()
-            self.viewer.draw_background(color_code=(108, 180, 143) if self.beauty_render else (255, 255, 255))
+
+            self.viewer.draw_background()
             if self.beauty_render:
                 self._draw_playground()
                 self._draw_energy(self.agent_list)
@@ -215,7 +245,7 @@ class wrestling(OlympicsBase):
 
         if self.draw_obs:
             if len(self.obs_list) > 0:
-                self.viewer.draw_view(self.obs_list, self.agent_list, leftmost_x=470, upmost_y=10, gap=130,
+                self.viewer.draw_view(self.obs_list, self.agent_list, leftmost_x=450, upmost_y=10, gap=130,
                                       energy_width=0 if self.beauty_render else 5)
 
         if self.show_traj:
@@ -237,19 +267,28 @@ class wrestling(OlympicsBase):
         pygame.display.flip()
         # self.viewer.background.fill((255, 255, 255))
 
+        # 
+        if mode == 'rgb_array':
+            pil_string_image = pygame.image.tostring(self.viewer.background, "RGB")
+            pil_image = Image.frombytes('RGB', self.viewer.background.get_size(), pil_string_image)
+            pil_image = pil_image.resize((width, height), resample=Image.BOX)
+            # pygame.image.save(self.viewer.background, 'screenshot.jpg')
+            img = cv2.cvtColor(np.asarray(pil_image), cv2.COLOR_RGB2BGR)
+            return img
+
     def _load_image(self):
-        self.playground_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/wrestling/playground.png"))
-        r = 440
-        self.playground_image = pygame.transform.scale(self.playground_image, size = (r*0.96899, r))
+        self.playground_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/table_hockey/playground.png")).convert_alpha()
+        self.playground_image = pygame.transform.scale(self.playground_image, size = (860, 565))
 
-        self.player_1_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/wrestling/player1.png"))
-        self.player_2_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/wrestling/player2.png"))
-
-        self.player_1_view_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/wrestling/sight1.png")).convert_alpha()
-        self.player_2_view_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/wrestling/sight2.png")).convert_alpha()
+        self.player_1_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/table_hockey/player1.png")).convert_alpha()
+        self.player_2_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/table_hockey/player2.png")).convert_alpha()
+        self.ball_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/table_hockey/ball.png")).convert_alpha()
+        self.player_1_view_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/table_hockey/sight1.png")).convert_alpha()
+        self.player_2_view_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/table_hockey/sight2.png")).convert_alpha()
 
         self.wood_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/board.png")).convert_alpha()
-        self.wood_image1 = pygame.transform.scale(self.wood_image, size = (260,170))
+        self.wood_image1 = pygame.transform.scale(self.wood_image, size = (300,170))
+        self.wood_image2 = pygame.transform.scale(self.wood_image, size = (70,30))
 
         self.red_energy_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/energy-red.png")).convert_alpha()
         red_energy_size = self.red_energy_image.get_size()
@@ -267,13 +306,14 @@ class wrestling(OlympicsBase):
         blue_energy_bar_size = self.blue_energy_bar_image.get_size()
         self.blue_energy_bar_image = pygame.transform.scale(self.blue_energy_bar_image, size=(85, 10))
 
-    def _draw_playground(self):
-        loc = (91,133)
-        self.viewer.background.blit(self.playground_image, loc)
-        self.viewer.background.blit(self.wood_image1, (440, 0))
-        self.viewer.background.blit(self.red_energy_image, (450, 130))
-        self.viewer.background.blit(self.blue_energy_image, (580, 130))
 
+    def _draw_playground(self):
+        loc = (-43,125)
+        self.viewer.background.blit(self.playground_image, loc)
+        self.viewer.background.blit(self.wood_image1, (400, 0))
+
+        self.viewer.background.blit(self.red_energy_image, (425, 130))
+        self.viewer.background.blit(self.blue_energy_image, (555, 130))
 
     def _draw_energy(self, agent_list):
 
@@ -282,7 +322,8 @@ class wrestling(OlympicsBase):
         # red_energy_bar = pygame.transform.scale(self.red_energy_bar_image, size=(85, 10))
         # blue_energy_bar = pygame.transform.scale(self.blue_energy_bar_image, size=(85, 10))
 
-        start_pos = [473, 136]
+
+        start_pos = [448, 136]
         # end_pos = [450+100*remain_energy, 130]
         image = self.red_energy_bar_image
         for agent_idx in range(len(agent_list)):
@@ -323,8 +364,8 @@ class wrestling(OlympicsBase):
                     self.viewer.background.blit(rotate_view_image, new_view_rect)
 
                     #view player image
-                    player_image_view = pygame.transform.rotate(image, 90)
-                    self.viewer.background.blit(player_image_view, (480, 90))
+                    # player_image_view = pygame.transform.rotate(image, 90)
+                    self.viewer.background.blit(image, (470, 90))
 
 
                 elif color == self.agent2_color:
@@ -339,16 +380,17 @@ class wrestling(OlympicsBase):
                     new_view_rect = rotate_view_image.get_rect(center=new_view_center)
                     self.viewer.background.blit(rotate_view_image, new_view_rect)
 
-                    player_image_view = pygame.transform.rotate(image, 90)
-                    self.viewer.background.blit(player_image_view, (610, 90))
+                    # player_image_view = pygame.transform.rotate(image, 90)
+                    self.viewer.background.blit(image, (600, 90))
 
                     # self.viewer.background.blit(image_green, loc)
+            elif agent.type == 'ball':
+                image = pygame.transform.scale(self.ball_image, size = (r*2, r*2))
+                loc = (t[0] - r, t[1] - r)
 
-            rotate_image = pygame.transform.rotate(image, -theta)
+            # rotate_image = pygame.transform.rotate(image, -theta)
 
-            new_rect = rotate_image.get_rect(center=image.get_rect(center = t).center)
-
-
-            self.viewer.background.blit(rotate_image, new_rect)
+            # new_rect = rotate_image.get_rect(center=image.get_rect(center = t).center)
 
 
+            self.viewer.background.blit(image, loc)

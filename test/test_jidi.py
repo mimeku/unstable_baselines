@@ -5,7 +5,7 @@ print(sys.path)
 import numpy as np
 
 from unstable_baselines.envs.olympics_integrated.chooseenv import make
-from unstable_baselines.common.env_wrapper import JidiFlattenEnv
+from unstable_baselines.common.env_wrapper import JidiFlattenEnvWrapper
 
 
 def get_two_agent_action():
@@ -19,7 +19,7 @@ def test_make_env():
     env = make('olympics-integrated')
     state = env.reset()
     print(state)
-    action_temp = [[[0], [0]], [[0], [0]]]
+    action_temp = [[0, 0], [0, 0]]
     next_state, reward, done, info_before, info_after = env.step(action_temp)
     print("\033[32m next_state\033[0m", next_state)
     print("\033[32m reward\033[0m", reward)
@@ -36,7 +36,7 @@ def test_make_env():
 
 def test_flatten_wrapper():
     env = make('olympics-integrated')
-    env = JidiFlattenEnv(env)
+    env = JidiFlattenEnvWrapper(env)
     obs = env.reset()
     print(obs)
 
@@ -46,7 +46,7 @@ def test_flatten_wrapper():
 
 
 # test_make_env()
-test_flatten_wrapper()
+# test_flatten_wrapper()
 
 
 # 测试传统gym的设置
@@ -63,6 +63,8 @@ import gym
 
 mujoco = gym.make("HalfCheetah-v2")
 obs = mujoco.reset()
+img = mujoco.render(mode='rgb_array', width=255, height=255) 
+print(img.shape)
 print("mujoco的状态有没有batch维度", obs.shape)
 print(mujoco.observation_space)
 print(mujoco.action_space)

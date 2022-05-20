@@ -19,6 +19,9 @@ from pathlib import Path
 current_path = str(Path(__file__).resolve().parent)
 maps_path = os.path.join(current_path, "running_competition_maps/maps.json")
 
+from PIL import Image
+import numpy as np
+import cv2
 
 
 class Running_competition(OlympicsBase):
@@ -142,7 +145,7 @@ class Running_competition(OlympicsBase):
             return '-1'
 
 
-    def render(self, info=None):
+    def render(self, info=None, mode='human', width=256, height=256):
 
 
         if not self.display_mode:
@@ -180,6 +183,14 @@ class Running_competition(OlympicsBase):
             if event.type == pygame.QUIT:
                 sys.exit()
         pygame.display.flip()
+        # 
+        if mode == 'rgb_array':
+            pil_string_image = pygame.image.tostring(self.viewer.background, "RGB")
+            pil_image = Image.frombytes('RGB', self.viewer.background.get_size(), pil_string_image)
+            pil_image = pil_image.resize((width, height), resample=Image.BOX)
+            # pygame.image.save(self.viewer.background, 'screenshot.jpg')
+            img = cv2.cvtColor(np.asarray(pil_image), cv2.COLOR_RGB2BGR)
+            return img
 
 
 

@@ -12,6 +12,11 @@ CURRENT_PATH = str(Path(__file__).resolve().parent.parent)
 import math
 import random
 
+from PIL import Image
+import numpy as np
+import cv2
+
+
 class football(OlympicsBase):
     def __init__(self, map, minimap=False):
         self.minimap_mode = map['obs_cfg']['minimap']
@@ -212,7 +217,7 @@ class football(OlympicsBase):
                 raise NotImplementedError
 
 
-    def render(self, info=None):
+    def render(self, info=None, mode='human', width=256, height=256):
 
         if self.minimap_mode:
             pass
@@ -264,6 +269,14 @@ class football(OlympicsBase):
                 sys.exit()
         pygame.display.flip()
         #self.viewer.background.fill((255, 255, 255))
+        # 
+        if mode == 'rgb_array':
+            pil_string_image = pygame.image.tostring(self.viewer.background, "RGB")
+            pil_image = Image.frombytes('RGB', self.viewer.background.get_size(), pil_string_image)
+            pil_image = pil_image.resize((width, height), resample=Image.BOX)
+            # pygame.image.save(self.viewer.background, 'screenshot.jpg')
+            img = cv2.cvtColor(np.asarray(pil_image), cv2.COLOR_RGB2BGR)
+            return img
 
     def _load_image(self):
         self.playground_image = pygame.image.load(os.path.join(CURRENT_PATH, "assets/football/playground.png")).convert_alpha()

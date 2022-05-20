@@ -11,7 +11,7 @@ from unstable_baselines.common.buffer import OnlineBuffer
     ignore_unknown_options=True,
     allow_extra_args=True,
 ))
-@click.argument("config-path",type=str, required=True)
+@click.argument("config-path",type=str, required=True, default="unstable_baselines/baselines/ppo/configs/HalfCheetah-v3.py")
 @click.option("--log-dir", default=os.path.join("logs", "ppo"))
 @click.option("--gpu", type=int, default=-1)
 @click.option("--print-log", type=bool, default=True)
@@ -64,6 +64,7 @@ def main(config_path, log_dir, gpu, print_log, seed, info, args):
 
     
     logger.log_str("Started training")
+    trainer.save_video_demo(20)
     trainer.train()
 
 

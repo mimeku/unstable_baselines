@@ -85,7 +85,21 @@ class OlympicsIntegrated(Game):
     def step(self, joint_action):
         self.is_valid_action(joint_action)
         info_before = self.step_before_info()
-        joint_action_decode = self.decode(joint_action)
+
+        # joint_action_decode = self.decode(joint_action)
+        joint_action_decode = joint_action
+        """ Primal joint_action requires [(2, 1), (2, 1)] shape, then `self.decode` function 
+        transfrom [[(2, 1), (2, 1)] to [(2, ), (2, )]. 
+        
+        In the PPO demo the agent can directly produce action whoes shape is (2, ), then 
+        the action is wraped and it's shape transform to (2, 1). Finally, the action included
+        in the `joint_action` is transform to (2, ) again.
+        https://github.com/jidiai/Competition_Olympics-Integrated/blob/main/rl_trainer/main.py#L126
+        
+        The sub-envirionments such as football, wrestling have no decode and require action whose 
+        shape is (2, ) directly.
+        """
+
         all_observations, reward, done, info_after = self.env_core.step(joint_action_decode)
         info_after = ''
         self.current_state = all_observations
@@ -102,13 +116,15 @@ class OlympicsIntegrated(Game):
         return info
 
     def decode(self, joint_action):
+        # joint_action shape: [(2, 1), (2, 1)] eg.[[[0], [0]], [[0], [0]]]
         joint_action_decode = []
         for act_id, nested_action in enumerate(joint_action):
             temp_action = [0, 0]
             temp_action[0] = nested_action[0][0]
             temp_action[1] = nested_action[1][0]
             joint_action_decode.append(temp_action)
-
+        
+        # joint_action_decode exptect shape: [(1, 2), (1, 2)]
         return joint_action_decode
 
 
@@ -144,5 +160,9 @@ class OlympicsIntegrated(Game):
     def get_single_action_space(self, player_id):
         return self.joint_action_space[player_id]
 
-
+    def render(self, mode='human', width=256, height=256):
+        if mode == 'human':
+            return self.env_core.render()
+        elif mode == 'rgb_array':
+            return self.env_core.render(mode='rgb_array', width=width, height=height)
 

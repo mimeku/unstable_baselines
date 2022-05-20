@@ -1,5 +1,12 @@
 import gym
 import numpy as np
+from gym import spaces
+
+from typing import Dict, List
+
+from unstable_baselines.envs.olympics_engine.generator import create_scenario
+from unstable_baselines.envs.olympics_engine.scenario.running import Running
+from unstable_baselines.envs.olympics_engine.scenario.running_competition import Running_competition
 # from mujoco_py import GlfwContext
 # GlfwContext(offscreen=True) 
 
@@ -26,6 +33,8 @@ MUJOCO_META_ENVS = [
     'humanoid-dir', 'hopper-rand-params', 'ant-dir', 
     'cheetah-vel', 'cheetah-dir', 'ant-goal']
 
+JIDIAI = ['olympics-integrated', 'running-competition', 'table-hockey', 'football', 'wrestling']
+
 METAWORLD_ENVS = ['MetaWorld']
 
 MBPO_ENVS = [
@@ -48,9 +57,88 @@ def get_env(env_name, **kwargs):
         register_mbpo_environments()
         env = gym.make(env_name)
         return env
+    elif env_name in JIDIAI:
+        env = make_jidi_env(env_name)
+        return env
     else:
         print("Env {} not supported".format(env_name))
         exit(0)
+
+
+def make_jidi_env(env_name):
+    """ create envrionment in JIDI
+    """
+    if env_name == 'olympics-integrated':
+        from unstable_baselines.envs.olympics_integrated.chooseenv import make as make_olympics_integrated_env
+        return make_olympics_integrated_env(env_name)
+    # single environment
+    elif env_name == 'running-competition':
+        from unstable_baselines.envs.olympics_engine.scenario import Running_competition
+        env = JidiRunningEnv()
+        return JidiSubEnvWrapper(env)
+    elif env_name == 'table-hockey':
+        from unstable_baselines.envs.olympics_engine.generator import create_scenario
+        from unstable_baselines.envs.olympics_engine.scenario import table_hockey
+        Gamemap = create_scenario(env_name)
+        env = table_hockey(Gamemap)
+        return JidiSubEnvWrapper(env)
+    elif env_name == 'football':
+        from unstable_baselines.envs.olympics_engine.generator import create_scenario
+        from unstable_baselines.envs.olympics_engine.scenario import football
+        Gamemap = create_scenario(env_name)
+        env = football(Gamemap)
+        return JidiSubEnvWrapper(env)
+    elif env_name == 'wrestling':
+        from unstable_baselines.envs.olympics_engine.generator import create_scenario
+        from unstable_baselines.envs.olympics_engine.scenario import wrestling
+        Gamemap = create_scenario(env_name)
+        env = wrestling(Gamemap)
+        return JidiSubEnvWrapper(env)
+
+
+class JidiRunningEnv:
+    """ Make the `running-competition` environment's map change when calling reset
+    """
+    def __init__(self, map_id_list=[1, 2, 3, 4]):
+        self.map_id_list = map_id_list
+        self.reset()
+        
+    @property
+    def max_step(self):
+        return self.env.max_step
+    
+    @max_step.setter
+    def max_step(self, value):
+        self.env.max_step = value
+
+    def step(self, action):
+        next_obs, reward, done, info = self.env.step(action)
+        return self._obs2dict(next_obs), reward, done, info
+
+    def _obs2dict(self, obs):
+        dict_obs_list = []
+        for sub_obs in obs:
+            dict_obs_list.append({'agent_obs': sub_obs})
+        return dict_obs_list
+
+    def reset(self):
+        map_id = np.random.choice(self.map_id_list)
+        Gamemap = create_scenario('running-competition')
+        self.env = Running_competition(meta_map=Gamemap, 
+                                  map_id=map_id, 
+                                  vis = 200, 
+                                  vis_clear=5, 
+                                  agent1_color = 'light red',
+                                  agent2_color = 'blue')
+        obs = self.env.reset()
+        return self._obs2dict(obs)
+    
+    def render(self, mode='human', width=256, height=256):
+        if mode == 'human':
+            return self.env.render()
+        elif mode == 'rgb_array':
+            return self.env.render(mode='rgb_array', width=width, height=height)
+   
 
 class BaseEnvWrapper(gym.Wrapper):
     def __init__(self, env, **kwargs):
@@ -254,3 +342,105 @@ class NormalizedBoxEnv(ProxyEnv, Serializable):
 
     def __getattr__(self, attrname):
         return getattr(self._wrapped_env, attrname)
+
+
+class JidiSubEnvWrapper(BaseEnvWrapper):
+    """ Uniform the step out
+    """
+    def __init__(self, env):
+        super(JidiSubEnvWrapper, self).__init__(env)
+        self.energy = self.env.max_step
+
+    def _uniform_obs(self, obs):
+        """ sub env step:
+        [{
+            'agent_obs': numpy.ndarray, (40, 40),
+            'id': Optional['team_0', 'team_1'],
+         },
+         { // another agent's observation}
+        ]
+        """
+        joint_obs = []
+        for id, agent_obs in enumerate(obs):
+            agent_obs['game_mode'] = ''
+            agent_obs['energy'] = self.energy
+            joint_obs.append({'obs': agent_obs, 'controlled_player_index': id})
+        return joint_obs
+ 
+    def step(self, action):
+        next_obs, reward, done, info = self.env.step(action)
+        next_obs = self._uniform_obs(next_obs)
+        return next_obs, reward, done, None, info
+
+    def reset(self):
+        self.energy = self.env.max_step
+        return self._uniform_obs(self.env.reset())
+
+    def render(self, mode='human', width=256, height=256):
+        if mode == 'human':
+            return self.env.render()
+        elif mode == 'rgb_array':
+            return self.env.render(mode='rgb_array', width=width, height=height)
+
+
+class JidiFlattenEnvWrapper(BaseEnvWrapper):
+    """ 
+    """
+    def __init__(self, env):
+        super(JidiFlattenEnvWrapper, self).__init__(env)
+
+        # Primal action_space from `self.env.get_single_action_space(0)`
+        # [Box([-100.], [200.], (1,), float32), Box([-30.], [30.], (1,), float32)]
+        self.action_space = spaces.Box(low=np.array([-100, -30]), high=np.array([200, 30]), shape=(2,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=0, high=10, shape=(40*40 + 1, ), dtype=np.uint8)
+
+    def _process_obs(self, pri_obs: Dict):
+        """ 将原始环境返回的obs打平，并
+
+        Args
+        ----
+        obs: Primal observation of the `olympics-integrated` envrionment
+            [{
+                'obs': {
+                    'agent_obs': numpy.ndarray, (40, 40),
+                    'id': Optional['team_0', 'team_1'],
+                    'game_mode': Optional['NEW GAME', ''],
+                    'energy': int,
+                }
+                'controlled_player_index': Optional[0, 1],
+             },
+             { // another agent's observation}
+            ]
+        """
+        # print('\033[33m FlattenEnvWrapper football obs\033[0m', pri_obs)
+
+
+        flatten_obs = pri_obs['obs']['agent_obs'].flatten()
+        energy = np.array((pri_obs['obs']['energy'], ))
+        # concatenate energy
+        return np.concatenate((flatten_obs, energy))
+
+    def return_obs(self, obs: List):
+        """ 返回两个智能体的观测
+
+        Return
+        ------
+
+        """
+        switch_game = True if obs[0]['obs']['game_mode'] == 'NEW GAME' else False
+        return [self._process_obs(obs_per_agent) for obs_per_agent in obs], switch_game
+        
+    def step(self, action):
+        next_obs, reward, done, info_before, info = self.env.step(action)
+        next_obs = self.return_obs(next_obs)
+        return next_obs, reward, done, info_before, info
+
+    def reset(self):
+        obs = self.env.reset()
+        return self.return_obs(obs)
+
+    def render(self, mode='human', width=256, height=256):
+        if mode == 'human':
+            return self.env.render()
+        elif mode == 'rgb_array':
+            return self.env.render(mode='rgb_array', width=width, height=height)

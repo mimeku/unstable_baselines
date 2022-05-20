@@ -1,7 +1,7 @@
 default_args = {
   # Environment
-  "env_name":{
-  },
+  "env_name": {},
+  "env_max_step": 1000,
 
   # Player: PPO 
   "player_1":{
@@ -43,17 +43,22 @@ default_args = {
     "buffer":{
       "max_trajectory_length": 1000,
       "advantage_type": "gae",
-      "size": 4000,
+      "size": 1000,
       "gamma": 0.99,
       "normalize_advantage": True,
       "gae_lambda": 0.97
     },
+    "trainer":{
+      "random_policy_timestep": -1,
+      "start_timestep": 0,
+      "batch_size": -1,
+    }
   },
 
   # Player 2: SAC
   "player_2":{
     "agent_name": "SAC",
-    "type_name": "off_policy",
+    "type": "off_policy",
     "agent":{
       "gamma": 0.99,
       "update_target_network_interval": 1,
@@ -89,18 +94,24 @@ default_args = {
     "buffer":{
       "max_buffer_size": 1000000
     }, 
+    "trainer":{
+      "random_policy_timestep": 10,
+      "start_timestep": 2000,
+      "batch_size": 256,
+    }
   },   
 
   # TwoAgentGameTrainer
   "trainer":{
     "max_env_steps": 3000000,
-    "num_env_steps_per_epoch": 4000,
-    "batch_size": 64,
+    "max_trajectory_length": 1000,
+    "num_env_steps_per_epoch": 1000,
+
     "eval_interval": 10,
     "num_eval_trajectories": 5,
     "snapshot_interval": 100,
     "start_timestep": 0,
     "save_video_demo_interval": 300,
-    "log_interval": 1
+    "log_interval": 1 # per epoch
   },
 }

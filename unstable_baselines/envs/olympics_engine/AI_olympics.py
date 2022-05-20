@@ -53,7 +53,7 @@ class AI_Olympics:
         selected_game_idx = self.selected_game_idx_pool[self.current_game_count]
 
 
-        print(f'Playing {self.game_pool[selected_game_idx]["name"]}')
+        # print(f'Playing {self.game_pool[selected_game_idx]["name"]}')
         # if self.game_pool[selected_game_idx]['name'] == 'running-competition':
         #     self.game_pool[selected_game_idx]['game'] = \
         #         Running_competition.reset_map(meta_map= self.running_game.meta_map,map_id=None, vis=200, vis_clear=5,
@@ -130,9 +130,8 @@ class AI_Olympics:
     def __getattr__(self, item):
         return getattr(self.current_game, item)
 
-
-    def render(self):
-        self.current_game.render()
+    def render(self, mode='human', width=256, height=256):
+        return self.current_game.render(mode=mode, width=width, height=height)
 
 
 

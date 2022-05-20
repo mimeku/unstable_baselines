@@ -319,6 +319,7 @@ class OnlineBuffer(object):
         data: dict
             obs, act, ret, adv, logp
         """
+        print("\033[33m online_buffer get bebug\033[0m", self.curr, self.max_size)
         assert self.curr == self.max_size
         self.curr, self.path_start_idx = 0, 0
         # normalize the advantage function
