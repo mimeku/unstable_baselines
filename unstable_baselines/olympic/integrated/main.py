@@ -104,7 +104,6 @@ def main(config_path, log_dir, gpu, print_log, seed, info, args):
     )
 
     logger.log_str("Started training")
-    
     trainer.train()
 
 
