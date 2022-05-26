@@ -139,9 +139,9 @@ class TwoAgentGame:
         """
         """
         if player.freeze_model:
-            return None
+            return {}
         if tot_env_steps < player.start_timestep:   # update after start_timestep
-            return None
+            return {}
         if player.type == 'on_policy':
             if epoch_ended:
                 start_time = time()
@@ -151,7 +151,7 @@ class TwoAgentGame:
                 loss_dict[f"times/{player.name}"] = train_on_policy_time
                 return loss_dict
             else:
-                return None
+                return {}
         elif player.type == 'off_policy':
             start_time = time()
             data_batch = player.buffer.sample(player.batch_size)
@@ -310,8 +310,8 @@ class TwoAgentGame:
             util.logger.log_str(summary_str)
         # save model
         if timestamp % self.snapshot_interval == 0:
-            self.player_1.save_model()
-            self.player_2.save_model()
+            self.player_1.save_model(timestamp)
+            self.player_2.save_model(timestamp)
         # save video demo
         if self.save_video_demo_interval > 0 and timestamp % self.save_video_demo_interval == 0:
             self.save_video_demo(timestamp)

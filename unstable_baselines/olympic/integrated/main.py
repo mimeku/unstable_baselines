@@ -105,11 +105,7 @@ def main(config_path, log_dir, gpu, print_log, seed, info, args):
 
     logger.log_str("Started training")
     
-    # test save_video
-    trainer.save_video_demo(20)
-
-
-    # trainer.train()
+    trainer.train()
 
 
 if __name__ == '__main__':
