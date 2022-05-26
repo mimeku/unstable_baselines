@@ -95,7 +95,7 @@ default_args = {
       "max_buffer_size": 1000000
     }, 
     "trainer":{
-      "random_policy_timestep": 10,
+      "random_policy_timestep": 10000,
       "start_timestep": 2000,
       "batch_size": 256,
     }
@@ -107,11 +107,11 @@ default_args = {
     "max_trajectory_length": 1000,
     "num_env_steps_per_epoch": 1000,
 
-    "eval_interval": 10,
+    "eval_interval": 100000,
     "num_eval_trajectories": 5,
-    "snapshot_interval": 100,
+    "snapshot_interval": 500000,
     "start_timestep": 0,
-    "save_video_demo_interval": 300,
-    "log_interval": 1 # per epoch
+    "save_video_demo_interval": 500000,
+    "log_interval": 10 # per epoch
   },
 }

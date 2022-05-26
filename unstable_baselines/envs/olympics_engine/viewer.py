@@ -1,5 +1,10 @@
 import pygame
 
+# for non-head mode
+import os
+# os.putenv('SDL_VIDEODRIVER', 'fbcon')
+# pygame.display.init()
+os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 # from olympics_engine.tools.settings import *
 from unstable_baselines.envs.olympics_engine.tools.settings import *
@@ -25,6 +30,7 @@ class Viewer():
         # WIN_SIZE = 1000, 1000
     def set_mode(self):
         self.background = pygame.display.set_mode(self.WIN_SIZE)
+        # self.background = pygame.display.set_mode()
 
     def set_screen(self, size, color, pos):
         tmp_screen = pygame.Surface(size)
